@@ -1,0 +1,18 @@
+# Vitis / SDK junk
+.metadata/
+.Xil/
+*.log
+
+# Build outputs
+Debug/
+Release/
+*.elf
+*.map
+
+# Eclipse junk
+.project
+.cproject
+.settings/
+
+# BSP generated
+bsp/
