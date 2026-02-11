@@ -16,3 +16,21 @@ Release/
 
 # BSP generated
 bsp/
+# Ignore build artifacts and generated files for portability
+Debug/
+**/Debug/
+*.o
+*.d
+*.elf
+*.elf.size
+*.log
+*.build.ui.log
+.Xil/
+tempdsa/
+*.pyc
+# Node / env
+node_modules/
+
+# Keep large tool outputs out of repo (uncomment if you prefer to ignore)
+# *.bit
+# export/
