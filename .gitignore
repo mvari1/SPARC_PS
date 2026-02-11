@@ -10,8 +10,6 @@ Release/
 *.map
 
 # Eclipse junk
-.project
-.cproject
 .settings/
 
 # BSP generated
@@ -28,8 +26,6 @@ Debug/
 .Xil/
 tempdsa/
 *.pyc
-# Node / env
-node_modules/
 
 # Keep large tool outputs out of repo (uncomment if you prefer to ignore)
 # *.bit
