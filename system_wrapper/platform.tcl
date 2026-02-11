@@ -9,5 +9,5 @@ platform generate
 platform generate
 platform generate
 platform active {system_wrapper}
-platform config -updatehw {C:/Users/mumbl/Downloads/Zybo-Z7-20-Pcam-5C-hw.xpr/hw/system_wrapper.xsa}
+platform config -updatehw {C:/Users/mumbl/Downloads/SPARC-hw.xpr/hw/system_wrapper.xsa}
 platform generate -domains 
