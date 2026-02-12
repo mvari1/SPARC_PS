@@ -1,31 +1,4 @@
-# Vitis / SDK junk
-.metadata/
-.Xil/
-*.log
+/workspace
+/.Xil
 
-# Build outputs
-Debug/
-Release/
-*.elf
-*.map
-
-# Eclipse junk
-.settings/
-
-# BSP generated
-bsp/
-# Ignore build artifacts and generated files for portability
-Debug/
-**/Debug/
-*.o
-*.d
-*.elf
-*.elf.size
-*.log
-*.build.ui.log
-.Xil/
-tempdsa/
-*.pyc
-
-/RemoteSystemsTempFiles
-
+.analytics

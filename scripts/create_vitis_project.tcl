@@ -19,7 +19,8 @@ platform generate
 app create -name SPARC \
     -platform SPARC_platform \
     -domain standalone_domain \
-    -template {Empty Application}
+    -template {Empty Application (C++)} \
+    -lang c++
 
 # Import source files
 importsources -name SPARC -path ./src
