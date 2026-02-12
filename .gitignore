@@ -27,6 +27,5 @@ Debug/
 tempdsa/
 *.pyc
 
-# Keep large tool outputs out of repo (uncomment if you prefer to ignore)
-# *.bit
-# export/
+/RemoteSystemsTempFiles
+
