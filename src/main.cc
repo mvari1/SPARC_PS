@@ -28,8 +28,81 @@
 
 using namespace digilent;
 
+
+// Helper: Print MIPI D-PHY RX status (assuming standard register map from Digilent IP)
+void print_dphy_status() {
+    u32 base = XPAR_MIPI_D_PHY_RX_0_S_AXI_LITE_BASEADDR;
+    u32 ctrl   = Xil_In32(base + 0x00);  // Control / status (often offset 0x00)
+    u32 status = Xil_In32(base + 0x04);  // Common status reg offset in many Digilent IPs
+    u32 errs   = Xil_In32(base + 0x08);  // Error flags (SoT, ECC, CRC, etc.)
+
+    xil_printf("\r\n=== MIPI D-PHY RX Status ===\r\n");
+    xil_printf("  Control: 0x%08X\r\n", ctrl);
+    xil_printf("  Status:  0x%08X\r\n", status);
+    xil_printf("  Errors:  0x%08X\r\n", errs);
+    // Interpret common bits (adjust based on actual VHDL if you have source)
+    if (status & 0x00000001) xil_printf("  -> IDELAYCTRL Locked\r\n");
+    if (status & 0x00000002) xil_printf("  -> HS Byte Clock Active\r\n");
+    if (status & 0x00000004) xil_printf("  -> RxActiveHS asserted\r\n");
+    if (errs != 0) xil_printf("  !!! ERRORS DETECTED !!!\r\n");
+}
+
+// Helper: Print MIPI CSI-2 RX status
+void print_csi_status() {
+    u32 base = XPAR_MIPI_CSI_2_RX_0_S_AXI_LITE_BASEADDR;
+    u32 core_status = Xil_In32(base + 0x14);   // Core status (common offset)
+    u32 irq_status  = Xil_In32(base + 0x18);   // Interrupt / error status
+    u32 prot_err    = Xil_In32(base + 0x20);   // Protocol errors (SoT, ECC, CRC)
+    u32 pkt_cnt     = Xil_In32(base + 0x28);   // Packet / frame counter (if exists)
+
+    xil_printf("\r\n=== MIPI CSI-2 RX Status ===\r\n");
+    xil_printf("  Core Status: 0x%08X\r\n", core_status);
+    xil_printf("  IRQ/Err Status: 0x%08X\r\n", irq_status);
+    xil_printf("  Protocol Err: 0x%08X\r\n", prot_err);
+    if (pkt_cnt) xil_printf("  Packet/Frame Count: %u\r\n", pkt_cnt);
+    if (prot_err & 0x01) xil_printf("  -> SoT Error\r\n");
+    if (prot_err & 0x02) xil_printf("  -> ECC 1-bit (corrected)\r\n");
+    if (prot_err & 0x04) xil_printf("  -> ECC 2-bit (uncorrectable)\r\n");
+    if (prot_err & 0x08) xil_printf("  -> CRC Error\r\n");
+}
+
+// Helper: Print VDMA S2MM (write from camera) status
+void print_vdma_s2mm_status() {
+    u32 base = XPAR_AXIVDMA_0_BASEADDR;
+
+    // Correct offsets from xaxivdma_hw.h and PG020 (S2MM starts at 0x30)
+    u32 s2mm_dmacr = Xil_In32(base + 0x30);   // S2MM_VDMACR (Control)
+    u32 s2mm_dmasr = Xil_In32(base + 0x34);   // S2MM_VDMASR (Status)
+
+    xil_printf("\r\n=== VDMA S2MM (Camera → DDR) Status ===\r\n");
+    xil_printf("  S2MM_VDMACR (Control): 0x%08X\r\n", s2mm_dmacr);
+    xil_printf("  S2MM_VDMASR (Status):  0x%08X\r\n", s2mm_dmasr);
+
+    // Use the correct masks from your header
+    if (s2mm_dmasr & XAXIVDMA_IXR_FRMCNT_MASK)
+        xil_printf("  -> Frame count interrupt active (frame complete)\r\n");
+
+    if (s2mm_dmasr & XAXIVDMA_IXR_DELAYCNT_MASK)
+        xil_printf("  -> Delay interrupt active\r\n");
+
+    if (s2mm_dmasr & XAXIVDMA_IXR_ERROR_MASK)
+        xil_printf("  -> VDMA ERROR (IOC_Irq, Dly_Irq, Err_Irq bits set)\r\n");
+
+    // Check run/stop state
+    if (!(s2mm_dmacr & XAXIVDMA_CR_RUNSTOP_MASK))
+        xil_printf("  WARNING: S2MM channel is HALTED (Run/Stop = 0)\r\n");
+}
+
 void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver, OV5640& cam, VideoOutput& vid, Resolution res, OV5640_cfg::mode_t mode)
 {
+
+	xil_printf("\r\n=== Starting mode change to mode %d ===\r\n", mode);
+
+    // Before reset
+    print_dphy_status();
+    print_csi_status();
+    print_vdma_s2mm_status();
+
 	//Bring up input pipeline back-to-front
 	{
 		vdma_driver.resetWrite();
@@ -41,7 +114,7 @@ void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver, OV56
 	{
 		vdma_driver.configureWrite(timing[static_cast<int>(res)].h_active, timing[static_cast<int>(res)].v_active);
 		Xil_Out32(GAMMA_BASE_ADDR, 3); // Set Gamma correction factor to 1/1.8
-		//TODO CSI-2, D-PHY config here
+		// TODO CSI-2, D-PHY config here
 		cam.init();
 	}
 
@@ -52,6 +125,12 @@ void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver, OV56
 		cam.set_mode(mode);
 		cam.set_awb(OV5640_cfg::awb_t::AWB_ADVANCED);
 	}
+
+	usleep(200000); // Give ~200 ms for first frames to arrive
+
+    print_dphy_status();
+    print_csi_status();
+    print_vdma_s2mm_status();
 
 	//Bring up output pipeline back-to-front
 	{
@@ -68,6 +147,8 @@ void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver, OV56
 		vid.enable();
 		vdma_driver.enableRead();
 	}
+
+	xil_printf("=== Mode change complete ===\r\n\r\n");
 }
 
 static void cli_readline(char *buf, size_t maxlen)
@@ -277,6 +358,8 @@ int main()
 		Resolution::R1920_1080_60_PP,
 		OV5640_cfg::MODE_1080P_1920_1080_30fps);
 
+	uint32_t counter = 0;
+
 	while (1)
 	{
 		char cmd[16];
@@ -295,6 +378,14 @@ int main()
 			break;
 		else
 			xil_printf("Unknown command\r\n");
+
+		counter++;
+        if (counter % 10 == 0) {
+            xil_printf("\r\n=== Periodic Status (count %u) ===\r\n", counter/10);
+            print_dphy_status();
+            print_csi_status();
+            print_vdma_s2mm_status();
+        }
 	}
 
 	cleanup_platform();
