@@ -134,7 +134,9 @@ static void cmd_resolution(AXI_VDMA<ScuGicInterruptController>& vdma,
 		"  1) 1280x720 @60\r\n"
 		"  2) 1920x1080 @15\r\n"
 		"  3) 1920x1080 @30\r\n"
-		"  4) 640x480 @60\r\n"
+		"  4) 640x480 @15\r\n"
+		"  5) 640x480 @30\r\n"
+		"  6) 640x480 @60\r\n"
 		"> ");
 
 	char line[16];
@@ -160,7 +162,17 @@ static void cmd_resolution(AXI_VDMA<ScuGicInterruptController>& vdma,
 	case '4':
 		pipeline_mode_change(vdma, cam, vid,
 			Resolution::R640_480_60_NN,
-			OV5640_cfg::MODE_480P_640_480_5FPS);
+			OV5640_cfg::MODE_480P_640_480_15FPS);
+		break;
+	case '5':
+		pipeline_mode_change(vdma, cam, vid,
+			Resolution::R640_480_60_NN,
+			OV5640_cfg::MODE_480P_640_480_30FPS);
+		break;
+	case '6':
+		pipeline_mode_change(vdma, cam, vid,
+			Resolution::R640_480_60_NN,
+			OV5640_cfg::MODE_480P_640_480_60FPS);
 		break;
 	default:
 		xil_printf("Invalid selection\r\n");
