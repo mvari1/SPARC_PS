@@ -92,74 +92,49 @@ namespace OV5640_cfg {
 		{0x5001 ,0x02}
 	};
 
-	config_word_t const cfg_480p_15fps_[] =
-	{// 640 x 480 binned, RAW10, MIPISCLK=~372M (adjusted), SCLK=24MHz, PCLK=~74.25MHz (to match demo CSI RX lane rate ~371 Mbps/lane)
+	config_word_t const cfg_480p_15fps_[] = {
+		// 640 x 480 @ 15 fps, RAW10, MIPISCLK≈210, SCLK≈42MHz, PCLK≈42M
 
-		{0x3035, 0x11}, // Changed from 0x21: system clk /1 (doubles base PCLK from 28MHz to 56MHz), MIPI /1
+		// PLL1 configuration
+		// Taken from 1080p 15 fps config, adjusted for 15 fps (lower MIPI clock) and 480p window
+		{0x3035, 0x41},  // [7:4]=0100 sys div /4, [3:0]=0001 MIPI scale /1
+		{0x3036, 0x69},  // PLL mult = 105
+		{0x3037, 0x05},  // [4]=0 root /1, [3:0]=5 pre-div /1.5
+		{0x3108, 0x11},  // [5:4]=01 PCLK root /2, [3:2]=00 SCLK2x /1, [1:0]=01 SCLK /2
 
-		{0x3a02, 0x1e}, // Changed from 0x0b: 60Hz max exposure high byte, scaled to ~3*new VTS=7833 (0x1e99) for night mode ~5fps min
-		{0x3a03, 0x99}, // Changed from 0x88: 60Hz max exposure low byte
-		{0x3a14, 0x1e}, // Changed from 0x0b: 50Hz max exposure high byte, same scaling
-		{0x3a15, 0x99}, // Changed from 0x88: 50Hz max exposure low byte
+		{0x3034, 0x1A},  // MIPI 10-bit mode
 
-		{0x3036, 0x78}, // mult = 120, pushes PCLK ~100 MHz, lane rate ~500 Mbps total — closer to working modes)
-		// FIX ME : Test incrementally (0x64 → 0x6e → 0x78) and watch if SoT errors disappear.
+		// Windowing for 640×480 (binned from full array, center crop or adjust as needed)
+		{0x3800, (336 >> 8) & 0x0F}, {0x3801, 336 & 0xFF},   // X start ~336
+		{0x3802, (426 >> 8) & 0x07}, {0x3803, 426 & 0xFF},   // Y start ~426 (similar to 1080p crop)
+		{0x3804, (336+639 >> 8) & 0x0F}, {0x3805, (336+639) & 0xFF},  // X end
+		{0x3806, (426+479 >> 8) & 0x07}, {0x3807, (426+479) & 0xFF},  // Y end
+		{0x3810, 0x00}, {0x3811, 0x00},  // H offset
+		{0x3812, 0x00}, {0x3813, 0x00},  // V offset
 
-		
-		{0x3037, 0x13}, // PLL root divide - /2, PLL pre-divider = 3
-		{0x3108, 0x01}, // CLK /2
+		{0x3808, (640 >> 8) & 0x0F}, {0x3809, 640 & 0xFF},   // Output width 640
+		{0x380a, (480 >> 8) & 0x7F}, {0x380b, 480 & 0xFF},   // Output height 480
 
-		//[3:0]=1111 MD2P,MD2N,MCP,MCN input
-		{0x3017, 0xff},
-		//[7:2]=1111111 MD1P,MD1N, D3:0 input
-		{0x3018, 0xff},
+		// Timings — adjust HTS/VTS for exact 15 fps (example values; calculate precisely)
+		{0x380c, (1896 >> 8) & 0x1F}, {0x380d, 1896 & 0xFF},  // HTS example
+		{0x380e, ( 800 >> 8) & 0xFF}, {0x380f, 800 & 0xFF},   // VTS example → tweak for 15 fps
 
-		//[6:4]=001 PLL charge pump, [3:0]=1010 MIPI 10-bit mode
-		{0x3034, 0x1A},
+		{0x3814, 0x31},  // Horizontal subsample (binning mode)
+		{0x3815, 0x31},  // Vertical subsample
 
+		{0x3821, 0x01},  // Mirror/binning flags (adjust as needed)
 
-		// Windowing / readout area (crop from full array, common for VGA)
-		//[3:0]=0 X address start high byte
-		{0x3800, 0x00},
-		//[7:0]=0 X address start low byte
-		{0x3801, 0x00},
-		//[2:0]=0 Y address start high byte
-		{0x3802, 0x00},
-		//[7:0]=0 Y address start low byte
-		{0x3803, 0x04}, //FIX ME potentially
+		{0x4837, 48},    // MIPI global timing unit ≈ 1/(42M)*2 (matches 42 MHz domain)
 
-		// Added: X address end high/low (full array width)
-		{0x3804, 0x0a}, // HW=2623 (0x0a3f)
-		{0x3805, 0x3f},
+		// Anti-green / other fixes (copy from your other modes)
+		{0x3618, 0x00},
+		{0x3612, 0x59},
+		{0x3708, 0x64},
+		{0x3709, 0x52},
+		{0x370c, 0x03},
 
-		// Added: Y address end high/low (full array height adjusted for VGA)
-		{0x3806, 0x07}, // VH=1947 (0x079b)
-		{0x3807, 0x9b},
-
-		// Added: Output width (DVPHO=640)
-		{0x3808, 0x02},
-		{0x3809, 0x80},
-
-		// Added: Output height (DVPVO=480)
-		{0x380a, 0x01},
-		{0x380b, 0xe0},
-
-		//HTS line exposure time in # of pixels
-		{0x380c, 0x07}, // Added: HTS=1896 (0x0768), standard for VGA binning
-		{0x380d, 0x68},
-
-		//VTS frame exposure time in # lines
-		{0x380e, 0x0a}, // Changed/Added: VTS=2611 (0x0a33) for 15fps at PCLK~74.25MHz (VTS ≈ PCLK / (HTS * fps) ≈74.25e6 / (1896 * 15) ≈2611)
-		{0x380f, 0x33},
-
-		// Added: Vertical offset (common for VGA)
-		{0x3813, 0x06}, // V offset=6
-
-		//[7:4]=0x0 Formatter RAW, [3:0]=0x0 BGBG/GRGR
-		{0x4300, 0x00},
-		//[2:0]=0x3 Format select ISP RAW (DPC) -- Corrected from 0x03: Should be 0x01 for ISP RAW output
-		{0x501f, 0x01},
-
+		{0x4300, 0x00},  // Formatter RAW
+		{0x501f, 0x03}   // ISP RAW (DPC)
 	};
 
 	config_word_t const cfg_480p_30fps_[] =

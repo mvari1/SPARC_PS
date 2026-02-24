@@ -1,5 +1,7 @@
 #include "xparameters.h"
 #include "xuartps_hw.h"
+#include "xcsiss_hw.h"
+#include "xcsi_hw.h"
 
 #include "platform/platform.h"
 #include "ov5640/OV5640.h"
@@ -8,12 +10,9 @@
 #include "ov5640/AXI_VDMA.h"
 #include "ov5640/PS_IIC.h"
 
-#include "MIPI_D_PHY_RX.h"
-#include "MIPI_CSI_2_RX.h"
-
 #define IRPT_CTL_DEVID 		XPAR_PS7_SCUGIC_0_DEVICE_ID
 #define GPIO_DEVID			XPAR_PS7_GPIO_0_DEVICE_ID
-#define GPIO_IRPT_ID			XPAR_PS7_GPIO_0_INTR
+#define GPIO_IRPT_ID		XPAR_PS7_GPIO_0_INTR
 #define CAM_I2C_DEVID		XPAR_PS7_I2C_0_DEVICE_ID
 #define CAM_I2C_IRPT_ID		XPAR_PS7_I2C_0_INTR
 #define VDMA_DEVID			XPAR_AXIVDMA_0_DEVICE_ID
@@ -26,44 +25,42 @@
 
 #define GAMMA_BASE_ADDR     XPAR_AXI_GAMMACORRECTION_0_BASEADDR
 
+#define MIPI_DPHY_BASE  (XPAR_MIPI_CSI2_RX_SUBSYST_0_BASEADDR + 0x1000)
+#define MIPI_RX_BASE    XPAR_MIPI_CSI2_RX_SUBSYST_0_BASEADDR
+
+#define XCSI_VC0_LINES_OFFSET  0x48  // Confirm in your PG232 version
+
+
 using namespace digilent;
 
+void print_mipi_status(void) {
+    u32 base = MIPI_RX_BASE;
+    u32 ccr = Xil_In32(base + XCSI_CCR_OFFSET);
+    u32 csr = Xil_In32(base + XCSI_CSR_OFFSET);
+    u32 isr = Xil_In32(base + XCSI_ISR_OFFSET);
 
-// Helper: Print MIPI D-PHY RX status (assuming standard register map from Digilent IP)
-void print_dphy_status() {
-    u32 base = XPAR_MIPI_D_PHY_RX_0_S_AXI_LITE_BASEADDR;
-    u32 ctrl   = Xil_In32(base + 0x00);  // Control / status (often offset 0x00)
-    u32 status = Xil_In32(base + 0x04);  // Common status reg offset in many Digilent IPs
-    u32 errs   = Xil_In32(base + 0x08);  // Error flags (SoT, ECC, CRC, etc.)
+    xil_printf("\r\n=== Xilinx MIPI CSI-2 RX Status ===\r\n");
+    xil_printf(" CCR (0x00): 0x%08X  [Core Enable:%d  Soft Reset:%d]\r\n",
+               ccr,
+               (ccr & XCSI_CCR_COREENB_MASK) >> XCSI_CCR_COREENB_SHIFT,
+               (ccr & XCSI_CCR_SOFTRESET_MASK) >> XCSI_CCR_SOFTRESET_SHIFT);
 
-    xil_printf("\r\n=== MIPI D-PHY RX Status ===\r\n");
-    xil_printf("  Control: 0x%08X\r\n", ctrl);
-    xil_printf("  Status:  0x%08X\r\n", status);
-    xil_printf("  Errors:  0x%08X\r\n", errs);
-    // Interpret common bits (adjust based on actual VHDL if you have source)
-    if (status & 0x00000001) xil_printf("  -> IDELAYCTRL Locked\r\n");
-    if (status & 0x00000002) xil_printf("  -> HS Byte Clock Active\r\n");
-    if (status & 0x00000004) xil_printf("  -> RxActiveHS asserted\r\n");
-    if (errs != 0) xil_printf("  !!! ERRORS DETECTED !!!\r\n");
-}
+    xil_printf(" CSR (0x10): 0x%08X  [PktCnt:%u  SP FIFO Full:%d  NotEmpty:%d  LineBufFull:%d]\r\n",
+               csr,
+               (csr & XCSI_CSR_PKTCOUNT_MASK) >> XCSI_CSR_PKTCOUNT_SHIFT,
+               (csr & XCSI_CSR_SPFIFOFULL_MASK) ? 1 : 0,
+               (csr & XCSI_CSR_SPFIFONE_MASK)   ? 1 : 0,
+               (csr & XCSI_CSR_SLBF_MASK)       ? 1 : 0);
 
-// Helper: Print MIPI CSI-2 RX status
-void print_csi_status() {
-    u32 base = XPAR_MIPI_CSI_2_RX_0_S_AXI_LITE_BASEADDR;
-    u32 core_status = Xil_In32(base + 0x14);   // Core status (common offset)
-    u32 irq_status  = Xil_In32(base + 0x18);   // Interrupt / error status
-    u32 prot_err    = Xil_In32(base + 0x20);   // Protocol errors (SoT, ECC, CRC)
-    u32 pkt_cnt     = Xil_In32(base + 0x28);   // Packet / frame counter (if exists)
+    xil_printf(" ISR (0x24): 0x%08X\r\n", isr);
 
-    xil_printf("\r\n=== MIPI CSI-2 RX Status ===\r\n");
-    xil_printf("  Core Status: 0x%08X\r\n", core_status);
-    xil_printf("  IRQ/Err Status: 0x%08X\r\n", irq_status);
-    xil_printf("  Protocol Err: 0x%08X\r\n", prot_err);
-    if (pkt_cnt) xil_printf("  Packet/Frame Count: %u\r\n", pkt_cnt);
-    if (prot_err & 0x01) xil_printf("  -> SoT Error\r\n");
-    if (prot_err & 0x02) xil_printf("  -> ECC 1-bit (corrected)\r\n");
-    if (prot_err & 0x04) xil_printf("  -> ECC 2-bit (uncorrectable)\r\n");
-    if (prot_err & 0x08) xil_printf("  -> CRC Error\r\n");
+    if (isr & XCSI_ISR_FR_MASK)       xil_printf("  * Frame Received\r\n");
+    if (isr & XCSI_ISR_VCXFE_MASK)     xil_printf("  * VCx Frame Level Error\r\n");
+    if (isr & (1U<<22))                xil_printf("  * Word Count Corruption\r\n");
+
+    u32 dphy_base = XPAR_MIPI_CSI2_RX_SUBSYST_0_BASEADDR + 0x1000;
+    xil_printf("D-PHY SR: 0x%08X\r\n", Xil_In32(dphy_base + 0x04));
+    xil_printf("D-PHY CR: 0x%08X\r\n", Xil_In32(dphy_base + 0x00));
 }
 
 // Helper: Print VDMA S2MM (write from camera) status
@@ -73,82 +70,102 @@ void print_vdma_s2mm_status() {
     // Correct offsets from xaxivdma_hw.h and PG020 (S2MM starts at 0x30)
     u32 s2mm_dmacr = Xil_In32(base + 0x30);   // S2MM_VDMACR (Control)
     u32 s2mm_dmasr = Xil_In32(base + 0x34);   // S2MM_VDMASR (Status)
-
     xil_printf("\r\n=== VDMA S2MM (Camera → DDR) Status ===\r\n");
-    xil_printf("  S2MM_VDMACR (Control): 0x%08X\r\n", s2mm_dmacr);
-    xil_printf("  S2MM_VDMASR (Status):  0x%08X\r\n", s2mm_dmasr);
+    xil_printf(" S2MM_VDMACR (Control): 0x%08X\r\n", s2mm_dmacr);
+    xil_printf(" S2MM_VDMASR (Status):  0x%08X\r\n", s2mm_dmasr);
 
-    // Use the correct masks from your header
+    // Interrupt status bits (in SR)
     if (s2mm_dmasr & XAXIVDMA_IXR_FRMCNT_MASK)
-        xil_printf("  -> Frame count interrupt active (frame complete)\r\n");
+        xil_printf(" → IOC_Irq: Interrupt on Complete (frame/descriptor finished)\r\n");
 
     if (s2mm_dmasr & XAXIVDMA_IXR_DELAYCNT_MASK)
-        xil_printf("  -> Delay interrupt active\r\n");
+        xil_printf(" → Dly_Irq: Delay interrupt\r\n");
 
     if (s2mm_dmasr & XAXIVDMA_IXR_ERROR_MASK)
-        xil_printf("  -> VDMA ERROR (IOC_Irq, Dly_Irq, Err_Irq bits set)\r\n");
+        xil_printf(" → Err_Irq: Error interrupt active (check error bits below)\r\n");
 
-    // Check run/stop state
+    // Run / Halted state
     if (!(s2mm_dmacr & XAXIVDMA_CR_RUNSTOP_MASK))
-        xil_printf("  WARNING: S2MM channel is HALTED (Run/Stop = 0)\r\n");
+        xil_printf(" WARNING: S2MM channel is HALTED (Run/Stop bit = 0)\r\n");
+
+    // Bonus: show common error flags (bits 4–11 in SR)
+    if (s2mm_dmasr & XAXIVDMA_SR_ERR_ALL_MASK) {
+        xil_printf("  -> DMA Errors:\r\n");
+        if (s2mm_dmasr & XAXIVDMA_SR_ERR_INTERNAL_MASK) xil_printf("     Internal error\r\n");
+        if (s2mm_dmasr & XAXIVDMA_SR_ERR_FSZ_LESS_MASK) xil_printf("     Frame size LESS than expected\r\n");
+        if (s2mm_dmasr & XAXIVDMA_SR_ERR_LSZ_LESS_MASK) xil_printf("     Line size LESS than expected\r\n");
+        if (s2mm_dmasr & XAXIVDMA_SR_ERR_FSZ_MORE_MASK) xil_printf("     Frame size MORE than expected\r\n");
+        if (s2mm_dmasr & XAXIVDMA_SR_ERR_SLAVE_MASK)    xil_printf("     Slave error\r\n");
+        if (s2mm_dmasr & XAXIVDMA_SR_ERR_DECODE_MASK)   xil_printf("     Decode error\r\n");
+    }
 }
 
-void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver, OV5640& cam, VideoOutput& vid, Resolution res, OV5640_cfg::mode_t mode)
+void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver,
+                          OV5640& cam,
+                          VideoOutput& vid,
+                          Resolution res,
+                          OV5640_cfg::mode_t mode)
 {
+    xil_printf("\r\n=== Starting mode change to mode %d ===\r\n", mode);
 
-	xil_printf("\r\n=== Starting mode change to mode %d ===\r\n", mode);
+	// 1. Stop everything cleanly
+	vdma_driver.resetWrite();
+	vdma_driver.resetRead();
+	vid.reset();
 
-    // Before reset
-    print_dphy_status();
-    print_csi_status();
-    print_vdma_s2mm_status();
+	// 2. Assert CSI-2 RX reset (bit 1 = soft reset)
+	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000002);
+	usleep(1000);
 
-	//Bring up input pipeline back-to-front
-	{
-		vdma_driver.resetWrite();
-		MIPI_CSI_2_RX_mWriteReg(XPAR_MIPI_CSI_2_RX_0_S_AXI_LITE_BASEADDR, CR_OFFSET, (CR_RESET_MASK & ~CR_ENABLE_MASK));
-		MIPI_D_PHY_RX_mWriteReg(XPAR_MIPI_D_PHY_RX_0_S_AXI_LITE_BASEADDR, CR_OFFSET, (CR_RESET_MASK & ~CR_ENABLE_MASK));
-		cam.reset();
-	}
+	// 3. De-assert reset but do NOT enable yet
+	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000000);
+	usleep(1000);
 
-	{
-		vdma_driver.configureWrite(timing[static_cast<int>(res)].h_active, timing[static_cast<int>(res)].v_active);
-		Xil_Out32(GAMMA_BASE_ADDR, 3); // Set Gamma correction factor to 1/1.8
-		// TODO CSI-2, D-PHY config here
-		cam.init();
-	}
 
-	{
-		vdma_driver.enableWrite();
-		MIPI_CSI_2_RX_mWriteReg(XPAR_MIPI_CSI_2_RX_0_S_AXI_LITE_BASEADDR, CR_OFFSET, CR_ENABLE_MASK);
-		MIPI_D_PHY_RX_mWriteReg(XPAR_MIPI_D_PHY_RX_0_S_AXI_LITE_BASEADDR, CR_OFFSET, CR_ENABLE_MASK);
-		cam.set_mode(mode);
-		cam.set_awb(OV5640_cfg::awb_t::AWB_ADVANCED);
-	}
+	// 4. Configure camera and start streaming FIRST
+	cam.reset();
+	cam.init();
+	cam.set_mode(mode);
+	cam.set_awb(OV5640_cfg::awb_t::AWB_ADVANCED);
 
-	usleep(200000); // Give ~200 ms for first frames to arrive
+	// 5. Wait for D-PHY to lock and sensor to start sending
+	usleep(100000); // 100ms minimum for OV5640 PLL lock
 
-    print_dphy_status();
-    print_csi_status();
-    print_vdma_s2mm_status();
+	// 6. NOW enable the CSI-2 RX core (bit 0 = core enable)
+	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000001);
+	usleep(10000);
 
-	//Bring up output pipeline back-to-front
-	{
-		vid.reset();
-		vdma_driver.resetRead();
-	}
+	// 7. Configure and enable VDMA write with correct dimensions
+	Xil_Out32(GAMMA_BASE_ADDR, 3);
+	vdma_driver.configureWrite(timing[static_cast<int>(res)].h_active,
+							   timing[static_cast<int>(res)].v_active);
+	vdma_driver.enableWrite();
 
-	{
-		vid.configure(res);
-		vdma_driver.configureRead(timing[static_cast<int>(res)].h_active, timing[static_cast<int>(res)].v_active);
-	}
+	// 8. Configure output side
+	vid.configure(res);
+	vdma_driver.configureRead(timing[static_cast<int>(res)].h_active,
+							  timing[static_cast<int>(res)].v_active);
+	vdma_driver.enableRead();
+	vid.enable();
 
-	{
-		vid.enable();
-		vdma_driver.enableRead();
-	}
 
-	xil_printf("=== Mode change complete ===\r\n\r\n");
+	usleep(200000);
+	print_mipi_status();
+	print_vdma_s2mm_status();
+
+	uint8_t r3035, r3036, r3037, r3824;
+	cam.readReg(0x3035, r3035);
+	cam.readReg(0x3036, r3036);
+	cam.readReg(0x3037, r3037);
+	cam.readReg(0x3824, r3824);
+
+
+	xil_printf("PLL: 3035=0x%02X 3036=0x%02X 3037=0x%02X 3824=0x%02X\r\n",
+	           r3035, r3036, r3037, r3824);
+	uint8_t r300e, r4800;
+	cam.readReg(0x300E, r300e);
+	cam.readReg(0x4800, r4800);
+	xil_printf("MIPI ctrl: 300E=0x%02X 4800=0x%02X\r\n", r300e, r4800);
 }
 
 static void cli_readline(char *buf, size_t maxlen)
@@ -343,6 +360,14 @@ int main()
 {
 	init_platform();
 
+	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000001);
+	usleep(10000);
+
+	u32 isr_before = Xil_In32(MIPI_RX_BASE + XCSI_ISR_OFFSET);
+	Xil_Out32(MIPI_RX_BASE + XCSI_ISR_OFFSET, 0xFFFFFFFF);
+	u32 isr_after  = Xil_In32(MIPI_RX_BASE + XCSI_ISR_OFFSET);
+	xil_printf("ISR: before=0x%08X after=0x%08X\r\n", isr_before, isr_after);
+
 	ScuGicInterruptController irpt_ctl(IRPT_CTL_DEVID);
 	PS_GPIO<ScuGicInterruptController> gpio(GPIO_DEVID, irpt_ctl, GPIO_IRPT_ID);
 	PS_IIC<ScuGicInterruptController> iic(CAM_I2C_DEVID, irpt_ctl, CAM_I2C_IRPT_ID, 100000);
@@ -354,9 +379,18 @@ int main()
 
 	VideoOutput vid(XPAR_VTC_0_DEVICE_ID, XPAR_VIDEO_DYNCLK_DEVICE_ID);
 
+	uint8_t r3035, r3036, r3037, r3034, r3108;
+	cam.readReg(0x3035, r3035);
+	cam.readReg(0x3036, r3036);
+	cam.readReg(0x3037, r3037);
+	cam.readReg(0x3034, r3034);
+	cam.readReg(0x3108, r3108);
+	xil_printf("Cold boot PLL: 3034=0x%02X 3035=0x%02X 3036=0x%02X 3037=0x%02X 3108=0x%02X\r\n",
+	           r3034, r3035, r3036, r3037, r3108);
+
 	pipeline_mode_change(vdma, cam, vid,
-		Resolution::R1920_1080_60_PP,
-		OV5640_cfg::MODE_1080P_1920_1080_30fps);
+		Resolution::R640_480_60_NN,
+		OV5640_cfg::MODE_480P_640_480_15FPS);
 
 	uint32_t counter = 0;
 
@@ -380,10 +414,9 @@ int main()
 			xil_printf("Unknown command\r\n");
 
 		counter++;
-        if (counter % 10 == 0) {
+        if (counter % 3 == 0) {
             xil_printf("\r\n=== Periodic Status (count %u) ===\r\n", counter/10);
-            print_dphy_status();
-            print_csi_status();
+            print_mipi_status();
             print_vdma_s2mm_status();
         }
 	}
