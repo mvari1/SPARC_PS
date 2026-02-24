@@ -124,6 +124,16 @@ namespace OV5640_cfg {
 
 		{0x3821, 0x01},  // Mirror/binning flags (adjust as needed)
 
+		/*
+		 * Set the pixel clock period expressed in ns with 1-bit decimal
+		 * (0x01=0.5ns).
+		 *
+		 * The register is very briefly documented. In the OV5645 datasheet it
+		 * is described as (2 * pclk period), and from testing it seems the
+		 * actual definition is 2 * 8-bit sample period.
+		 *
+		 * 2 * sample_period = (mipi_clk * 2 * num_lanes / bpp) * (bpp / 8) / 2
+		 */
 		{0x4837, 48},    // MIPI global timing unit 1/(42M)*2 (matches 42 MHz domain)
 
 		// Anti-green / other fixes (copy from your other modes)
