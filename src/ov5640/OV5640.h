@@ -20,6 +20,9 @@
 #define SIZEOF_ARRAY(x) sizeof(x)/sizeof(x[0])
 #define MAP_ENUM_TO_CFG(en, cfg) en, cfg, SIZEOF_ARRAY(cfg)
 
+#define OV5640_MIN_VBLANK	24
+#define OV5640_MAX_VTS		3375
+
 namespace digilent {
 
 typedef enum {OK=0, ERR_LOGICAL, ERR_GENERAL} Errc;
