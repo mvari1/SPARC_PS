@@ -107,24 +107,51 @@ namespace OV5640_cfg {
 //
 //		{0x3034, 0x1A},  // MIPI 10-bit mode
 
-		// Windowing for 640—480 (binned from full array, center crop or adjust as needed)
-		{0x3800, (336 >> 8) & 0x0F}, {0x3801, 336 & 0xFF},   // X start ~336
+
+		// Windowing for 640—480 (binned from full array, center crop)
+		// .analog_crop = {
+		// 	.left	= OV5640_PIXEL_ARRAY_LEFT, X start
+		// 	.top	= OV5640_PIXEL_ARRAY_TOP, Y Start
+		// 	.width	= OV5640_PIXEL_ARRAY_WIDTH, (left + width - 1)
+		// 	.height	= OV5640_PIXEL_ARRAY_HEIGHT,   (top + height - 1)
+		// },
+
+		// #define OV5640_NATIVE_WIDTH		2624
+		// #define OV5640_NATIVE_HEIGHT		1964
+		// #define OV5640_PIXEL_ARRAY_TOP		14
+		// #define OV5640_PIXEL_ARRAY_LEFT		16
+		// #define OV5640_PIXEL_ARRAY_WIDTH	2592
+		// #define OV5640_PIXEL_ARRAY_HEIGHT	1944
+
+		{0x3800, (336 >> 8) & 0x0F}, {0x3801, 336 & 0xFF},   // X start ~336 
 		{0x3802, (426 >> 8) & 0x07}, {0x3803, 426 & 0xFF},   // Y start ~426 (similar to 1080p crop)
 		{0x3804, (336+639 >> 8) & 0x0F}, {0x3805, (336+639) & 0xFF},  // X end
 		{0x3806, (426+479 >> 8) & 0x07}, {0x3807, (426+479) & 0xFF},  // Y end
+
+		// .crop = {
+		// 				.left	= 2, 0x3810 Hoffset
+		// 				.top	= 4, 0x3812 Voffset
+		// 				.width	= 640,  0x3808 
+		// 				.height	= 480,  0x380a 
+		// 			}
 		{0x3810, 0x00}, {0x3811, 0x00},  // H offset
 		{0x3812, 0x00}, {0x3813, 0x00},  // V offset
-
 		{0x3808, (640 >> 8) & 0x0F}, {0x3809, 640 & 0xFF},   // Output width 640
 		{0x380a, (480 >> 8) & 0x7F}, {0x380b, 480 & 0xFF},   // Output height 480
 
-		// Timings adjust HTS/VTS for exact 15 fps (example values; calculate precisely)
-		{0x380c, (1896 >> 8) & 0x1F}, {0x380d, 1896 & 0xFF},  // HTS example
-		{0x380e, ( 800 >> 8) & 0xFF}, {0x380f, 800 & 0xFF},   // VTS example â†’ tweak for 15 fps
+		//	.htot		= 1600,
+		// .vblank_def	= 520,
+		// Timings adjust HTS/VTS for FPS = SCLK/(HTS*VTS
+		// adjust just VTS
+		{0x380c, (1896 >> 8) & 0x1F}, {0x380d, 1896 & 0xFF},  // HTS example htot
+		{0x380e, ( 800 >> 8) & 0xFF}, {0x380f, 800 & 0xFF},   // VTS example (height + vblank_def)
 
+		// double check (what is binning mode)?
+		// ov5640_setting_low_res
 		{0x3814, 0x31},  // Horizontal subsample (binning mode)
-		{0x3815, 0x31},  // Vertical subsample
+		{0x3815, 0x31},  // Vertical subsample 
 
+		// adjust look at setting below & liniux driver
 		{0x3821, 0x01},  // Mirror/binning flags (adjust as needed)
 
 		/*
@@ -137,9 +164,10 @@ namespace OV5640_cfg {
 		 *
 		 * 2 * sample_period = (mipi_clk * 2 * num_lanes / bpp) * (bpp / 8) / 2
 		 */
+		//adjust for PCLK
 		{0x4837, 48},    // MIPI global timing unit 1/(42M)*2 (matches 42 MHz domain)
 
-		// Anti-green / other fixes (copy from your other modes)
+		// Anti-green 
 		{0x3618, 0x00},
 		{0x3612, 0x59},
 		{0x3708, 0x64},
