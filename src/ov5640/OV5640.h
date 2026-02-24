@@ -26,7 +26,7 @@ typedef enum {OK=0, ERR_LOGICAL, ERR_GENERAL} Errc;
 
 namespace OV5640_cfg {
 	using config_word_t = struct { uint16_t addr; uint8_t data; } ;
-	using mode_t = enum { MODE_480P_640_480_15FPS = 0, MODE_480P_640_480_30FPS, MODE_480P_640_480_60FPS, MODE_720P_1280_720_60fps, MODE_1080P_1920_1080_15fps,
+	using mode_t = enum { MODE_480P_640_480_15FPS = 0, MODE_720P_1280_720_15fps, MODE_720P_1280_720_60fps, MODE_1080P_1920_1080_15fps,
 		MODE_1080P_1920_1080_30fps, MODE_1080P_1920_1080_30fps_336M_MIPI,
 		MODE_1080P_1920_1080_30fps_336M_1LANE_MIPI, MODE_END } ;
 	using config_modes_t = struct { mode_t mode; config_word_t const* cfg; size_t cfg_size; };
@@ -93,18 +93,18 @@ namespace OV5640_cfg {
 	};
 
 	config_word_t const cfg_480p_15fps_[] = {
-		// 640 x 480 @ 15 fps, RAW10, MIPISCLK≈210, SCLK≈42MHz, PCLK≈42M
+		// 640 x 480 @ 15 fps, RAW10, MIPISCLK = 210, SCLK = 42MHz, PCLK = 42M
 
 		// PLL1 configuration
-		// Taken from 1080p 15 fps config, adjusted for 15 fps (lower MIPI clock) and 480p window
-		{0x3035, 0x41},  // [7:4]=0100 sys div /4, [3:0]=0001 MIPI scale /1
-		{0x3036, 0x69},  // PLL mult = 105
-		{0x3037, 0x05},  // [4]=0 root /1, [3:0]=5 pre-div /1.5
-		{0x3108, 0x11},  // [5:4]=01 PCLK root /2, [3:2]=00 SCLK2x /1, [1:0]=01 SCLK /2
+//		// Taken from 1080p 15 fps config, adjusted for 15 fps (lower MIPI clock) and 480p window
+//		{0x3035, 0x41},  // [7:4]=0100 sys div /4, [3:0]=0001 MIPI scale /1
+//		{0x3036, 0x69},  // PLL mult = 105
+//		{0x3037, 0x05},  // [4]=0 root /1, [3:0]=5 pre-div /1.5
+//		{0x3108, 0x11},  // [5:4]=01 PCLK root /2, [3:2]=00 SCLK2x /1, [1:0]=01 SCLK /2
+//
+//		{0x3034, 0x1A},  // MIPI 10-bit mode
 
-		{0x3034, 0x1A},  // MIPI 10-bit mode
-
-		// Windowing for 640×480 (binned from full array, center crop or adjust as needed)
+		// Windowing for 640—480 (binned from full array, center crop or adjust as needed)
 		{0x3800, (336 >> 8) & 0x0F}, {0x3801, 336 & 0xFF},   // X start ~336
 		{0x3802, (426 >> 8) & 0x07}, {0x3803, 426 & 0xFF},   // Y start ~426 (similar to 1080p crop)
 		{0x3804, (336+639 >> 8) & 0x0F}, {0x3805, (336+639) & 0xFF},  // X end
@@ -115,16 +115,16 @@ namespace OV5640_cfg {
 		{0x3808, (640 >> 8) & 0x0F}, {0x3809, 640 & 0xFF},   // Output width 640
 		{0x380a, (480 >> 8) & 0x7F}, {0x380b, 480 & 0xFF},   // Output height 480
 
-		// Timings — adjust HTS/VTS for exact 15 fps (example values; calculate precisely)
+		// Timings adjust HTS/VTS for exact 15 fps (example values; calculate precisely)
 		{0x380c, (1896 >> 8) & 0x1F}, {0x380d, 1896 & 0xFF},  // HTS example
-		{0x380e, ( 800 >> 8) & 0xFF}, {0x380f, 800 & 0xFF},   // VTS example → tweak for 15 fps
+		{0x380e, ( 800 >> 8) & 0xFF}, {0x380f, 800 & 0xFF},   // VTS example â†’ tweak for 15 fps
 
 		{0x3814, 0x31},  // Horizontal subsample (binning mode)
 		{0x3815, 0x31},  // Vertical subsample
 
 		{0x3821, 0x01},  // Mirror/binning flags (adjust as needed)
 
-		{0x4837, 48},    // MIPI global timing unit ≈ 1/(42M)*2 (matches 42 MHz domain)
+		{0x4837, 48},    // MIPI global timing unit 1/(42M)*2 (matches 42 MHz domain)
 
 		// Anti-green / other fixes (copy from your other modes)
 		{0x3618, 0x00},
@@ -133,196 +133,58 @@ namespace OV5640_cfg {
 		{0x3709, 0x52},
 		{0x370c, 0x03},
 
+
 		{0x4300, 0x00},  // Formatter RAW
-		{0x501f, 0x03}   // ISP RAW (DPC)
+		{0x501f, 0x03},   // ISP RAW (DPC)
+
 	};
 
-	config_word_t const cfg_480p_30fps_[] =
-	{
-		// Initial setup (common)
-		{0x3103, 0x11}, // System clock from pad
-		{0x3008, 0x82}, // Software reset (delay 5ms)
-		{0x3008, 0x42}, // Software power down
-		{0x3103, 0x03}, // System clock from PLL
-		{0x3017, 0xff}, // IO output enable
-		{0x3018, 0xff},
-		{0x3034, 0x1a}, // 10-bit mode
-		{0x3037, 0x13}, // PLL pre-div
-		{0x3108, 0x01}, // Clock dividers
-		{0x3630, 0x36},
-		{0x3631, 0x0e},
-		{0x3632, 0xe2},
-		{0x3633, 0x12},
-		{0x3621, 0xe0},
-		{0x3704, 0xa0},
-		{0x3703, 0x5a},
-		{0x3715, 0x78},
-		{0x3717, 0x01},
-		{0x370b, 0x60},
-		{0x3705, 0x1a},
-		{0x3905, 0x02},
-		{0x3906, 0x10},
-		{0x3901, 0x0a},
-		{0x3731, 0x12},
-		{0x3600, 0x08}, // VCM
-		{0x3601, 0x33},
-		{0x302d, 0x60},
-		{0x3620, 0x52},
-		{0x371b, 0x20},
-		{0x471c, 0x50},
-		{0x3a13, 0x43}, // Pre-gain
-		{0x3a18, 0x00}, // Gain ceiling
-		{0x3a19, 0xf8},
-		{0x3635, 0x13},
-		{0x3636, 0x03},
-		{0x3634, 0x40},
-		{0x3622, 0x01},
+	config_word_t const cfg_720p_15fps_[] = {
+	    // 1280 x 720 binned, RAW10, MIPISCLK=280M, SCLK=56MHz, PCLK=56M
+	    // PLL1 configuration (unchanged — plenty of bandwidth for 15 fps)
+	    {0x3035, 0x21},  // sys div /2, MIPI scale /1
+	    {0x3036, 0x46},  // PLL mult = 70
+	    {0x3037, 0x05},  // pre-div /1.5, root div /1
+	    {0x3108, 0x11},  // PCLK /2, SCLK /2
+	    {0x3034, 0x1A},  // 10-bit MIPI mode
 
-		// VGA 30 FPS timings (PCLK 56MHz)
-		{0x3035, 0x11}, // PLL
-		{0x3036, 0x46}, // PLL
-		{0x3c07, 0x08}, // Light meter threshold
-		{0x3820, 0x41}, // ISP flip on
-		{0x3821, 0x07}, // ISP mirror on, H bin on
-		{0x3814, 0x31}, // X inc
-		{0x3815, 0x31}, // Y inc
-		{0x3800, 0x00}, // HS
-		{0x3801, 0x00},
-		{0x3802, 0x00}, // VS
-		{0x3803, 0x04},
-		{0x3804, 0x0a}, // HW
-		{0x3805, 0x3f},
-		{0x3806, 0x07}, // VH
-		{0x3807, 0x9b},
-		{0x3808, 0x02}, // DVPHO (640)
-		{0x3809, 0x80},
-		{0x380a, 0x01}, // DVPVO (480)
-		{0x380b, 0xe0},
-		{0x380c, 0x07}, // HTS (1896)
-		{0x380d, 0x68},
-		{0x380e, 0x03}, // VTS (984)
-		{0x380f, 0xd8},
-		{0x3813, 0x06}, // V offset
-		{0x3618, 0x00},
-		{0x3612, 0x29},
-		{0x3709, 0x52},
-		{0x370c, 0x03},
-		{0x3a02, 0x17}, // 60Hz max exp (night mode 5 FPS)
-		{0x3a03, 0x10},
-		{0x3a14, 0x17}, // 50Hz max exp
-		{0x3a15, 0x10},
-		{0x4004, 0x02}, // BLC lines
-		{0x3002, 0x1c}, // Reset FIFOs
-		{0x3006, 0xc3}, // Disable JPEG clocks
-		{0x4713, 0x03}, // JPEG mode 3
-		{0x4407, 0x04}, // Quant scale
-		{0x460b, 0x35},
-		{0x460c, 0x22},
-		{0x4837, 0x22}, // CLK div
-		{0x3824, 0x02}, // CLK div
-		{0x5001, 0xa3}, // ISP on (AWB, etc.)
-		{0x3503, 0x00}, // AEC/AGC on
+	    // Windowing (unchanged — full 1280×720 active area from binned sensor)
+	    {0x3800, (0 >> 8) & 0x0F}, {0x3801, 0 & 0xFF},
+	    {0x3802, (8 >> 8) & 0x07}, {0x3803, 8 & 0xFF},
+	    {0x3804, (2619 >> 8) & 0x0F}, {0x3805, 2619 & 0xFF},
+	    {0x3806, (1947 >> 8) & 0x07}, {0x3807, 1947 & 0xFF},
+	    {0x3810, 0x00}, {0x3811, 0x00},
+	    {0x3812, 0x00}, {0x3813, 0x00},
 
-		// Change to RAW Bayer (key for demo pipeline)
-		{0x4300, 0x00}, // Format control for RAW
-		{0x501f, 0x03}, // ISP RAW
+	    // Output size (unchanged)
+	    {0x3808, (1280 >> 8) & 0x0F}, {0x3809, 1280 & 0xFF},
+	    {0x380a, (720 >> 8) & 0x7F}, {0x380b, 720 & 0xFF},
 
-		// Enable streaming
-		{0x3008, 0x02}
-	};
+	    // Timing — CHANGED for 15 fps
+	    // HTS: keep ~1896 (reasonable horizontal blanking)
+	    {0x380c, (1896 >> 8) & 0x1F}, {0x380d, 1896 & 0xFF},
+	    // VTS: increase to ~3936 (≈4× original 984) → frame time ≈ 56e6 / (1896 × 3936) ≈ 15 fps
+	    // You can fine-tune VTS to exactly 15 fps: VTS = round(56e6 / (1896 × 15)) ≈ 3936
+	    {0x380e, (3936 >> 8) & 0xFF}, {0x380f, 3936 & 0xFF},
 
-	config_word_t const cfg_480p_60fps_[] =
-	{
-		// Initial setup (common)
-		{0x3103, 0x11}, // System clock from pad
-		{0x3008, 0x82}, // Software reset (delay 5ms)
-		{0x3008, 0x42}, // Software power down
-		{0x3103, 0x03}, // System clock from PLL
-		{0x3017, 0xff}, // IO output enable
-		{0x3018, 0xff},
-		{0x3034, 0x1a}, // 10-bit mode
-		{0x3037, 0x13}, // PLL pre-div
-		{0x3108, 0x01}, // Clock dividers
-		{0x3630, 0x36},
-		{0x3631, 0x0e},
-		{0x3632, 0xe2},
-		{0x3633, 0x12},
-		{0x3621, 0xe0},
-		{0x3704, 0xa0},
-		{0x3703, 0x5a},
-		{0x3715, 0x78},
-		{0x3717, 0x01},
-		{0x370b, 0x60},
-		{0x3705, 0x1a},
-		{0x3905, 0x02},
-		{0x3906, 0x10},
-		{0x3901, 0x0a},
-		{0x3731, 0x12},
-		{0x3600, 0x08}, // VCM
-		{0x3601, 0x33},
-		{0x302d, 0x60},
-		{0x3620, 0x52},
-		{0x371b, 0x20},
-		{0x471c, 0x50},
-		{0x3a13, 0x43}, // Pre-gain
-		{0x3a18, 0x00}, // Gain ceiling
-		{0x3a19, 0xf8},
-		{0x3635, 0x13},
-		{0x3636, 0x03},
-		{0x3634, 0x40},
-		{0x3622, 0x01},
+	    // Subsampling / binning (unchanged)
+	    {0x3814, 0x31},
+	    {0x3815, 0x31},
+	    {0x3821, 0x01},
 
-		// VGA 60 FPS timings (PCLK ~MHz)
-		{0x3035, 0x21}, // PLL
-		{0x3036, 0x46}, // PLL
-		{0x3c07, 0x08}, // Light meter threshold
-		{0x3820, 0x41}, // ISP flip on
-		{0x3821, 0x07}, // ISP mirror on, H bin on
-		{0x3814, 0x31}, // X inc
-		{0x3815, 0x31}, // Y inc
-		{0x3800, 0x00}, // HS
-		{0x3801, 0x00},
-		{0x3802, 0x00}, // VS
-		{0x3803, 0x04},
-		{0x3804, 0x0a}, // HW
-		{0x3805, 0x3f},
-		{0x3806, 0x07}, // VH
-		{0x3807, 0x9b},
-		{0x3808, 0x02}, // DVPHO (640)
-		{0x3809, 0x80},
-		{0x380a, 0x01}, // DVPVO (480)
-		{0x380b, 0xe0},
-		{0x380c, 0x07}, // HTS (1896)
-		{0x380d, 0x68},
-		{0x380e, 0x03}, // VTS (984)
-		{0x380f, 0xd8},
-		{0x3813, 0x06}, // V offset
-		{0x3618, 0x00},
-		{0x3612, 0x29},
-		{0x3709, 0x52},
-		{0x370c, 0x03},
-		{0x3a02, 0x0b}, // 60Hz max exp (night mode 5 FPS)
-		{0x3a03, 0x88},
-		{0x3a14, 0x0b}, // 50Hz max exp
-		{0x3a15, 0x88},
-		{0x4004, 0x02}, // BLC lines
-		{0x3002, 0x1c}, // Reset FIFOs
-		{0x3006, 0xc3}, // Disable JPEG clocks
-		{0x4713, 0x03}, // JPEG mode 3
-		{0x4407, 0x04}, // Quant scale
-		{0x460b, 0x35},
-		{0x460c, 0x22},
-		{0x4837, 0x22}, // CLK div
-		{0x3824, 0x02}, // CLK div
-		{0x5001, 0xa3}, // ISP on (AWB, etc.)
-		{0x3503, 0x00}, // AEC/AGC on
+	    // MIPI timing unit (unchanged — matches 56 MHz domain)
+	    {0x4837, 36},  // 1/(56M)*2
 
-		// Change to RAW Bayer (key for demo pipeline)
-		{0x4300, 0x00}, // Format control for RAW
-		{0x501f, 0x03}, // ISP RAW
+	    // Anti-green / fixes (unchanged)
+	    {0x3618, 0x00},
+	    {0x3612, 0x59},
+	    {0x3708, 0x64},
+	    {0x3709, 0x52},
+	    {0x370c, 0x03},
 
-		// Enable streaming
-		{0x3008, 0x02}
+	    // Formatter & ISP (unchanged — RAW10)
+	    {0x4300, 0x00},
+	    {0x501f, 0x03}
 	};
 
 	config_word_t const cfg_720p_60fps_[] =
@@ -890,8 +752,7 @@ config_word_t const cfg_1080p_30fps_336M_1lane_mipi_[] =
 	config_modes_t const modes[] =
 	{
 			{ MAP_ENUM_TO_CFG(MODE_480P_640_480_15FPS, cfg_480p_15fps_) },
-			{ MAP_ENUM_TO_CFG(MODE_480P_640_480_30FPS, cfg_480p_30fps_) },
-			{ MAP_ENUM_TO_CFG(MODE_480P_640_480_60FPS, cfg_480p_60fps_) },
+			{ MAP_ENUM_TO_CFG(MODE_720P_1280_720_15fps, cfg_720p_15fps_) },
 			{ MAP_ENUM_TO_CFG(MODE_720P_1280_720_60fps, cfg_720p_60fps_) },
 			{ MAP_ENUM_TO_CFG(MODE_1080P_1920_1080_15fps, cfg_1080p_15fps_) },
 			{ MAP_ENUM_TO_CFG(MODE_1080P_1920_1080_30fps, cfg_1080p_30fps_), },

@@ -58,6 +58,49 @@ void print_mipi_status(void) {
     if (isr & XCSI_ISR_VCXFE_MASK)     xil_printf("  * VCx Frame Level Error\r\n");
     if (isr & (1U<<22))                xil_printf("  * Word Count Corruption\r\n");
 
+    u32 pcr = Xil_In32(base + 0x04);
+    xil_printf(" PCR (0x04): 0x%08X  [Max Lanes:%d  Active Lanes:%d]\r\n",
+               pcr,
+               (pcr & XCSI_PCR_MAXLANES_MASK) >> XCSI_PCR_MAXLANES_SHIFT,
+               (pcr & XCSI_PCR_ACTLANES_MASK) >> XCSI_PCR_ACTLANES_SHIFT);
+
+    u32 clkinfr = Xil_In32(base + XCSI_CLKINFR_OFFSET);
+    xil_printf(" Clock Lane Info (0x3C): 0x%08X  [Stop State:%d]\r\n",
+               clkinfr,
+               (clkinfr & XCSI_CLKINFR_STOP_MASK) ? 1 : 0);
+
+    u32 l0infr = Xil_In32(base + XCSI_L0INFR_OFFSET);
+    u32 l1infr = Xil_In32(base + XCSI_L1INFR_OFFSET);
+    xil_printf(" Lane 0 Info (0x40): 0x%08X  [Stop:%d  SkewCalHS:%d  SoTErr:%d  SoTSyncErr:%d]\r\n",
+               l0infr,
+               (l0infr & XCSI_LXINFR_STOP_MASK) ? 1 : 0,
+               (l0infr & XCSI_LXINFR_SKEWCALHS_MASK) ? 1 : 0,
+               (l0infr & XCSI_LXINFR_SOTERR_MASK) ? 1 : 0,
+               (l0infr & XCSI_LXINFR_SOTSYNCERR_MASK) ? 1 : 0);
+    xil_printf(" Lane 1 Info (0x44): 0x%08X  [Stop:%d  SkewCalHS:%d  SoTErr:%d  SoTSyncErr:%d]\r\n",
+               l1infr,
+               (l1infr & XCSI_LXINFR_STOP_MASK) ? 1 : 0,
+               (l1infr & XCSI_LXINFR_SKEWCALHS_MASK) ? 1 : 0,
+               (l1infr & XCSI_LXINFR_SOTERR_MASK) ? 1 : 0,
+               (l1infr & XCSI_LXINFR_SOTSYNCERR_MASK) ? 1 : 0);
+
+    u32 spktr = Xil_In32(base + XCSI_SPKTR_OFFSET);
+    xil_printf(" Short Packet FIFO (0x30): 0x%08X  [VC:%d  DataType:0x%02X  Data:0x%04X]\r\n",
+               spktr,
+               (spktr & XCSI_SPKTR_VC_MASK) >> XCSI_SPKTR_VC_SHIFT,
+               (spktr & XCSI_SPKTR_DT_MASK),
+               (spktr & XCSI_SPKTR_DATA_MASK) >> XCSI_SPKTR_DATA_SHIFT);
+
+    u32 vc0inf1 = Xil_In32(base + XCSI_VC0INF1R_OFFSET);
+    u32 vc0inf2 = Xil_In32(base + XCSI_VC0INF2R_OFFSET);
+    xil_printf(" VC0 Image Info1 (0x60): 0x%08X  [LineCount:%u  ByteCount:%u]\r\n",
+               vc0inf1,
+               (vc0inf1 & XCSI_VCXINF1R_LINECOUNT_MASK) >> XCSI_VCXINF1R_LINECOUNT_SHIFT,
+               (vc0inf1 & XCSI_VCXINF1R_BYTECOUNT_MASK));
+    xil_printf(" VC0 Image Info2 (0x64): 0x%08X  [DataType:0x%02X]\r\n",
+               vc0inf2,
+               (vc0inf2 & XCSI_VCXINF2R_DATATYPE_MASK));
+
     u32 dphy_base = XPAR_MIPI_CSI2_RX_SUBSYST_0_BASEADDR + 0x1000;
     xil_printf("D-PHY SR: 0x%08X\r\n", Xil_In32(dphy_base + 0x04));
     xil_printf("D-PHY CR: 0x%08X\r\n", Xil_In32(dphy_base + 0x00));
@@ -110,46 +153,33 @@ void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver,
 
 	// 1. Stop everything cleanly
 	vdma_driver.resetWrite();
-	vdma_driver.resetRead();
-	vid.reset();
-
 	// 2. Assert CSI-2 RX reset (bit 1 = soft reset)
 	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000002);
-	usleep(1000);
-
 	// 3. De-assert reset but do NOT enable yet
 	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000000);
-	usleep(1000);
-
-
-	// 4. Configure camera and start streaming FIRST
 	cam.reset();
+
+	vdma_driver.configureWrite(timing[static_cast<int>(res)].h_active,
+								   timing[static_cast<int>(res)].v_active);
+	Xil_Out32(GAMMA_BASE_ADDR, 3);
 	cam.init();
+
+	vdma_driver.enableWrite();
+	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000001);
+
 	cam.set_mode(mode);
 	cam.set_awb(OV5640_cfg::awb_t::AWB_ADVANCED);
 
-	// 5. Wait for D-PHY to lock and sensor to start sending
-	usleep(100000); // 100ms minimum for OV5640 PLL lock
 
-	// 6. NOW enable the CSI-2 RX core (bit 0 = core enable)
-	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000001);
-	usleep(10000);
-
-	// 7. Configure and enable VDMA write with correct dimensions
-	Xil_Out32(GAMMA_BASE_ADDR, 3);
-	vdma_driver.configureWrite(timing[static_cast<int>(res)].h_active,
-							   timing[static_cast<int>(res)].v_active);
-	vdma_driver.enableWrite();
-
-	// 8. Configure output side
+	vid.reset();
+	vdma_driver.resetRead();
 	vid.configure(res);
-	vdma_driver.configureRead(timing[static_cast<int>(res)].h_active,
-							  timing[static_cast<int>(res)].v_active);
-	vdma_driver.enableRead();
+	vdma_driver.configureRead(timing[static_cast<int>(res)].h_active, timing[static_cast<int>(res)].v_active);
+
 	vid.enable();
+	vdma_driver.enableRead();
 
 
-	usleep(200000);
 	print_mipi_status();
 	print_vdma_s2mm_status();
 
@@ -233,8 +263,8 @@ static void cmd_resolution(AXI_VDMA<ScuGicInterruptController>& vdma,
 		"  2) 1920x1080 @15\r\n"
 		"  3) 1920x1080 @30\r\n"
 		"  4) 640x480 @15\r\n"
-		"  5) 640x480 @30\r\n"
-		"  6) 640x480 @60\r\n"
+		"  5) 1280x720 @15\r\n"
+		"  6) test pattern\r\n"
 		"> ");
 
 	char line[16];
@@ -265,13 +295,12 @@ static void cmd_resolution(AXI_VDMA<ScuGicInterruptController>& vdma,
 	case '5':
 		pipeline_mode_change(vdma, cam, vid,
 			Resolution::R640_480_60_NN,
-			OV5640_cfg::MODE_480P_640_480_30FPS);
+			OV5640_cfg::MODE_720P_1280_720_15fps);
 		break;
 	case '6':
-		pipeline_mode_change(vdma, cam, vid,
-			Resolution::R640_480_60_NN,
-			OV5640_cfg::MODE_480P_640_480_60FPS);
-		break;
+		cam.set_test(OV5640_cfg::TEST_EIGHT_COLOR_BAR);
+	    xil_printf("Test pattern enabled (8-color bars).\r\n");
+	    break;
 	default:
 		xil_printf("Invalid selection\r\n");
 		return;
@@ -360,13 +389,7 @@ int main()
 {
 	init_platform();
 
-	XCsiSs_WriteReg(MIPI_RX_BASE, XCSI_CCR_OFFSET, 0x00000001);
-	usleep(10000);
-
-	u32 isr_before = Xil_In32(MIPI_RX_BASE + XCSI_ISR_OFFSET);
-	Xil_Out32(MIPI_RX_BASE + XCSI_ISR_OFFSET, 0xFFFFFFFF);
-	u32 isr_after  = Xil_In32(MIPI_RX_BASE + XCSI_ISR_OFFSET);
-	xil_printf("ISR: before=0x%08X after=0x%08X\r\n", isr_before, isr_after);
+	xil_printf("=== Running 2-LANE MIPI BUILD - built %s %s ===\r\n", __DATE__, __TIME__);
 
 	ScuGicInterruptController irpt_ctl(IRPT_CTL_DEVID);
 	PS_GPIO<ScuGicInterruptController> gpio(GPIO_DEVID, irpt_ctl, GPIO_IRPT_ID);
@@ -391,6 +414,7 @@ int main()
 	pipeline_mode_change(vdma, cam, vid,
 		Resolution::R640_480_60_NN,
 		OV5640_cfg::MODE_480P_640_480_15FPS);
+
 
 	uint32_t counter = 0;
 
