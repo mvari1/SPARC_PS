@@ -23,6 +23,13 @@
 #define OV5640_MIN_VBLANK	24
 #define OV5640_MAX_VTS		3375
 
+#define OV5640_NATIVE_WIDTH		2624
+#define OV5640_NATIVE_HEIGHT		1964
+#define OV5640_PIXEL_ARRAY_TOP		14
+#define OV5640_PIXEL_ARRAY_LEFT		16
+#define OV5640_PIXEL_ARRAY_WIDTH	2592
+#define OV5640_PIXEL_ARRAY_HEIGHT	1944
+
 namespace digilent {
 
 typedef enum {OK=0, ERR_LOGICAL, ERR_GENERAL} Errc;
@@ -95,76 +102,99 @@ namespace OV5640_cfg {
 		{0x5001 ,0x02}
 	};
 
+	/*The issue in the camera pipeline using the OmniVision OV5640 was caused by 
+	insufficient vertical timing while operating in 2× vertical binning mode. 
+	The system initially exhibited frozen image regions at the bottom of the frame, 
+	inconsistent CSI line counts (e.g., reporting 559 lines instead of 480), and 
+	intermittent VDMA frame size mismatches. Although the horizontal configuration 
+	was correct (800 bytes per line for 640-pixel RAW10 output), the vertical dimension
+	was unstable. The configured Vertical Total Size (VTS) was 
+	875 lines (480 active + 395 blanking), which did not provide enough margin 
+	for the sensor’s internal processing pipeline. In binning mode, the OV5640 must 
+	read a larger analog frame, perform binning, and complete internal ISP operations 
+	before transmitting the final image over CSI. Because VTS was too small, the 
+	internal processing overran the frame boundary, causing premature frame termination. 
+	This resulted in truncated frames, incorrect CSI line reporting, and downstream 
+	VDMA errors that manifested visually as a frozen lower image region. 
+	The problem was resolved by increasing the VTS to provide sufficient vertical 
+	blanking time and increasing the SCLK. This demonstrated that the failure was a 
+	vertical timing constraint within the sensor pipeline rather than an issue with
+	CSI, HDMI, PLL configuration, or DMA settings.
+*/
+	// Windowing for 640—480 (binned from full array, center crop)
+	// .analog_crop = {
+	// 	.left	= OV5640_PIXEL_ARRAY_LEFT, X start
+	// 	.top	= OV5640_PIXEL_ARRAY_TOP, Y Start
+	// 	.width	= OV5640_PIXEL_ARRAY_WIDTH, (left + width - 1)
+	// 	.height	= OV5640_PIXEL_ARRAY_HEIGHT,   (top + height - 1)
+	// },
+
+	// .crop = {
+	// 				.left	= 2, 0x3810 Hoffset
+	// 				.top	= 4, 0x3812 Voffset
+	// 				.width	= 640,  0x3808 
+	// 				.height	= 480,  0x380a 
+	// 			}
+
+	//	.htot		= 1600, HTS
+	// .vblank_def	= 520, VTS = Height + Vblank_def 
+
+	// ov5640_setting_low_res use 0x31 binding (0x3814, 0x3815)
+
+
+	/* Gloabl Timing Clock
+	* Set the pixel clock period expressed in ns with 1-bit decimal
+	* (0x01=0.5ns).
+	*
+	* The register is very briefly documented. In the OV5645 datasheet it
+	* is described as (2 * pclk period), and from testing it seems the
+	* actual definition is 2 * 8-bit sample period.
+	*
+	* 2 * sample_period = (mipi_clk * 2 * num_lanes / bpp) * (bpp / 8) / 2
+	*/
+
 	config_word_t const cfg_480p_15fps_[] = {
-		// 640 x 480 @ 15 fps, RAW10, MIPISCLK = 210, SCLK = 42MHz, PCLK = 42M
+		// 640 x 480 @ 15 fps, RAW10, MIPISCLK=280M, SCLK=56Mz, PCLK=56M
 
-		// PLL1 configuration
-//		// Taken from 1080p 15 fps config, adjusted for 15 fps (lower MIPI clock) and 480p window
-//		{0x3035, 0x41},  // [7:4]=0100 sys div /4, [3:0]=0001 MIPI scale /1
-//		{0x3036, 0x69},  // PLL mult = 105
-//		{0x3037, 0x05},  // [4]=0 root /1, [3:0]=5 pre-div /1.5
-//		{0x3108, 0x11},  // [5:4]=01 PCLK root /2, [3:2]=00 SCLK2x /1, [1:0]=01 SCLK /2
-//
-//		{0x3034, 0x1A},  // MIPI 10-bit mode
+		//PLL1 configuration
+		//[7:4]=0010 System clock divider /2, [3:0]=0001 Scale divider for MIPI /1
+		{0x3035, 0x21},
+		//[7:0]=70 PLL multiplier
+		{0x3036, 0x46},
+		//[4]=0 PLL root divider /1, [3:0]=5 PLL pre-divider /1.5
+		{0x3037, 0x05},
+		//[5:4]=01 PCLK root divider /2, [3:2]=00 SCLK2x root divider /1, [1:0]=01 SCLK root divider /2
+		{0x3108, 0x11},
+
+		//[6:4]=001 PLL charge pump, [3:0]=1010 MIPI 10-bit mode
+		{0x3034, 0x1A},
 
 
-		// Windowing for 640—480 (binned from full array, center crop)
-		// .analog_crop = {
-		// 	.left	= OV5640_PIXEL_ARRAY_LEFT, X start
-		// 	.top	= OV5640_PIXEL_ARRAY_TOP, Y Start
-		// 	.width	= OV5640_PIXEL_ARRAY_WIDTH, (left + width - 1)
-		// 	.height	= OV5640_PIXEL_ARRAY_HEIGHT,   (top + height - 1)
-		// },
 
-		// #define OV5640_NATIVE_WIDTH		2624
-		// #define OV5640_NATIVE_HEIGHT		1964
-		// #define OV5640_PIXEL_ARRAY_TOP		14
-		// #define OV5640_PIXEL_ARRAY_LEFT		16
-		// #define OV5640_PIXEL_ARRAY_WIDTH	2592
-		// #define OV5640_PIXEL_ARRAY_HEIGHT	1944
+		{0x3800, (OV5640_PIXEL_ARRAY_LEFT >> 8) & 0x0F}, {0x3801, OV5640_PIXEL_ARRAY_LEFT & 0xFF},   // X start ~16 
+		{0x3802, (OV5640_PIXEL_ARRAY_TOP >> 8) & 0x07}, {0x3803, OV5640_PIXEL_ARRAY_TOP & 0xFF},   // Y start ~14 (similar to 1080p crop)
+		{0x3804, (OV5640_PIXEL_ARRAY_LEFT+OV5640_PIXEL_ARRAY_WIDTH-1 >> 8) & 0x0F}, {0x3805, (OV5640_PIXEL_ARRAY_LEFT+OV5640_PIXEL_ARRAY_WIDTH-1) & 0xFF},  // X end
+		{0x3806, (OV5640_PIXEL_ARRAY_TOP+OV5640_PIXEL_ARRAY_HEIGHT-1 >> 8) & 0x07}, {0x3807, (OV5640_PIXEL_ARRAY_TOP+OV5640_PIXEL_ARRAY_HEIGHT-1) & 0xFF},  // Y end
 
-		{0x3800, (336 >> 8) & 0x0F}, {0x3801, 336 & 0xFF},   // X start ~336 
-		{0x3802, (426 >> 8) & 0x07}, {0x3803, 426 & 0xFF},   // Y start ~426 (similar to 1080p crop)
-		{0x3804, (336+639 >> 8) & 0x0F}, {0x3805, (336+639) & 0xFF},  // X end
-		{0x3806, (426+479 >> 8) & 0x07}, {0x3807, (426+479) & 0xFF},  // Y end
-
-		// .crop = {
-		// 				.left	= 2, 0x3810 Hoffset
-		// 				.top	= 4, 0x3812 Voffset
-		// 				.width	= 640,  0x3808 
-		// 				.height	= 480,  0x380a 
-		// 			}
-		{0x3810, 0x00}, {0x3811, 0x00},  // H offset
-		{0x3812, 0x00}, {0x3813, 0x00},  // V offset
+		{0x3810, 0x00}, {0x3811, 0x02},  // H offset
+		{0x3812, 0x00}, {0x3813, 0x04},  // V offset
 		{0x3808, (640 >> 8) & 0x0F}, {0x3809, 640 & 0xFF},   // Output width 640
 		{0x380a, (480 >> 8) & 0x7F}, {0x380b, 480 & 0xFF},   // Output height 480
 
-		//	.htot		= 1600,
-		// .vblank_def	= 520,
-		// Timings adjust HTS/VTS for FPS = SCLK/(HTS*VTS
-		// adjust just VTS
-		{0x380c, (1896 >> 8) & 0x1F}, {0x380d, 1896 & 0xFF},  // HTS example htot
-		{0x380e, ( 800 >> 8) & 0xFF}, {0x380f, 800 & 0xFF},   // VTS example (height + vblank_def)
 
-		// double check (what is binning mode)?
-		// ov5640_setting_low_res
+		// Timings adjust HTS/VTS for FPS = SCLK/(HTS*VTS)
+		{0x380c, (1600 >> 8) & 0x1F}, {0x380d, 1600 & 0xFF},  // HTS 
+		// VTS (height + vblank_def)
+		{0x380e, ( (480+1863) >> 8) & 0xFF}, {0x380f, (480+1863) & 0xFF}, 
+
+
+		// VTS≥(output_h​eight×bin_f​actor)+margin
+		// Instead of changing SCLK can try to reduce binding
 		{0x3814, 0x31},  // Horizontal subsample (binning mode)
 		{0x3815, 0x31},  // Vertical subsample 
 
-		// adjust look at setting below & liniux driver
-		{0x3821, 0x01},  // Mirror/binning flags (adjust as needed)
+		{0x3821, 0x01},  // Mirror/binning flags 
 
-		/*
-		 * Set the pixel clock period expressed in ns with 1-bit decimal
-		 * (0x01=0.5ns).
-		 *
-		 * The register is very briefly documented. In the OV5645 datasheet it
-		 * is described as (2 * pclk period), and from testing it seems the
-		 * actual definition is 2 * 8-bit sample period.
-		 *
-		 * 2 * sample_period = (mipi_clk * 2 * num_lanes / bpp) * (bpp / 8) / 2
-		 */
-		//adjust for PCLK
 		{0x4837, 48},    // MIPI global timing unit 1/(42M)*2 (matches 42 MHz domain)
 
 		// Anti-green 
@@ -176,7 +206,7 @@ namespace OV5640_cfg {
 
 
 		{0x4300, 0x00},  // Formatter RAW
-		{0x501f, 0x03},   // ISP RAW (DPC)
+		{0x501f, 0x03}   // ISP RAW (DPC)
 
 	};
 
