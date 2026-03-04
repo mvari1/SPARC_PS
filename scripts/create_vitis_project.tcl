@@ -12,17 +12,12 @@ platform create -name SPARC_platform \
     -proc ps7_cortexa9_0 \
     -os standalone
 
+
+bsp setlib -name xilffs
+bsp write
+
 # Build platform
 platform generate
-
-
-domain create -name standalone -os standalone -proc ps7_cortexa9_0 -arch 32  
-domain active standalone
-
-# Enable xilffs library
-bsp setlib -name xilffs
-
-bsp regenerate
 
 # Create application
 app create -name SPARC \
@@ -32,7 +27,7 @@ app create -name SPARC \
     -lang c++
 
 # Import source files
-#importsources -name SPARC -path ./src
+importsources -name SPARC -path ./src
 
 # Build application
 app build -name SPARC

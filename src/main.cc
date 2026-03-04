@@ -10,6 +10,9 @@
 #include "ov5640/AXI_VDMA.h"
 #include "ov5640/PS_IIC.h"
 
+#include "ff.h"
+#include "xil_cache.h"
+
 #define IRPT_CTL_DEVID 		XPAR_PS7_SCUGIC_0_DEVICE_ID
 #define GPIO_DEVID			XPAR_PS7_GPIO_0_DEVICE_ID
 #define GPIO_IRPT_ID		XPAR_PS7_GPIO_0_INTR

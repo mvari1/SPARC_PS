@@ -49,6 +49,7 @@ This will automatically:
 - Create a local workspace folder
 - Create the platform from xsa/system_wrapper.xsa
 - Build the platform
+- Import srcs
 - Create the SPARC application
 - Build the ELF
 
@@ -76,8 +77,5 @@ HOW TO OPEN IN VITIS GUI
 You will now see:
 - SPARC_platform
 - SPARC
-
-5. Import src folder
-
 
 Build and program as normal.
