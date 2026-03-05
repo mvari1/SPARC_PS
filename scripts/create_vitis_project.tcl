@@ -27,7 +27,8 @@ app create -name SPARC \
     -lang c++
 
 # Import source files
-importsources -name SPARC -path ./src
+importsources -name SPARC -path ./src 
+#-soft-link
 
 # Build application
 app build -name SPARC
