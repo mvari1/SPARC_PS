@@ -122,13 +122,13 @@ void print_vdma_s2mm_status() {
 
     // Interrupt status bits (in SR)
     if (s2mm_dmasr & XAXIVDMA_IXR_FRMCNT_MASK)
-        xil_printf(" → IOC_Irq: Interrupt on Complete (frame/descriptor finished)\r\n");
+        xil_printf(" IOC_Irq: Interrupt on Complete (frame/descriptor finished)\r\n");
 
     if (s2mm_dmasr & XAXIVDMA_IXR_DELAYCNT_MASK)
-        xil_printf(" → Dly_Irq: Delay interrupt\r\n");
+        xil_printf("Dly_Irq: Delay interrupt\r\n");
 
     if (s2mm_dmasr & XAXIVDMA_IXR_ERROR_MASK)
-        xil_printf(" → Err_Irq: Error interrupt active (check error bits below)\r\n");
+        xil_printf("Err_Irq: Error interrupt active (check error bits below)\r\n");
 
     // Run / Halted state
     if (!(s2mm_dmacr & XAXIVDMA_CR_RUNSTOP_MASK))
@@ -185,20 +185,6 @@ void pipeline_mode_change(AXI_VDMA<ScuGicInterruptController>& vdma_driver,
 
 	print_mipi_status();
 	print_vdma_s2mm_status();
-
-	uint8_t r3035, r3036, r3037, r3824;
-	cam.readReg(0x3035, r3035);
-	cam.readReg(0x3036, r3036);
-	cam.readReg(0x3037, r3037);
-	cam.readReg(0x3824, r3824);
-
-
-	xil_printf("PLL: 3035=0x%02X 3036=0x%02X 3037=0x%02X 3824=0x%02X\r\n",
-	           r3035, r3036, r3037, r3824);
-	uint8_t r300e, r4800;
-	cam.readReg(0x300E, r300e);
-	cam.readReg(0x4800, r4800);
-	xil_printf("MIPI ctrl: 300E=0x%02X 4800=0x%02X\r\n", r300e, r4800);
 }
 
 static void cli_readline(char *buf, size_t maxlen)
@@ -375,6 +361,37 @@ static void cmd_liquid_lens(OV5640& cam)
 	xil_printf("Liquid lens set to 0x%02X\r\n", val);
 }
 
+// Polls for completed frames and writes to file
+static void cmd_capture(AXI_VDMA<ScuGicInterruptController>& vdma, FIL& fil) {
+    const int num_frames = 10;  // Change this to capture more/less frames
+
+    u32 prev_cnt = vdma.getCompletedFrameCntWrite();
+    xil_printf("Starting capture of %d frames...\r\n", num_frames);
+
+    for (int i = 0; i < num_frames; i++) {
+        // Poll until a new frame is completed
+        while (vdma.getCompletedFrameCntWrite() == prev_cnt) {}
+
+        prev_cnt++;
+        u32 frame_index = (prev_cnt - 1) % vdma.getNumBuffers();
+        u8* frame_ptr = (u8*)vdma.getWriteBufferAddr(frame_index);
+        u32 frame_size = vdma.getWriteFrameSize();
+
+        // Flush cache for coherency (ensure CPU sees latest DMA data)
+        Xil_DCacheFlushRange((INTPTR)frame_ptr, frame_size);
+
+        UINT bw;
+        FRESULT res = f_write(&fil, frame_ptr, frame_size, &bw);
+        if (res != FR_OK || bw != frame_size) {
+            xil_printf("Write failed for frame %d (res=%d, bw=%u)\r\n", i, res, bw);
+            return;
+        }
+        f_sync(&fil);  // Flush to SD
+        xil_printf("Captured frame %d (%u bytes) to video.raw\r\n", i, frame_size);
+    }
+
+    xil_printf("Capture complete. File size updated on SD.\r\n");
+}
 
 static void print_menu()
 {
@@ -384,6 +401,7 @@ static void print_menu()
 		"l  - Liquid lens\r\n"
 		"wr - Write OV5640 register\r\n"
 		"rr - Read OV5640 register\r\n"
+		"c  - Capture 10 frames to video.raw\r\n"
 		"q  - Quit\r\n"
 		"> ");
 }
@@ -393,6 +411,13 @@ int main()
 	init_platform();
 
 	xil_printf("=== Running 2-LANE MIPI BUILD - built %s %s ===\r\n", __DATE__, __TIME__);
+
+	FATFS fs;
+	FRESULT res = f_mount(&fs, "0:", 1);
+	if (res != FR_OK) { 
+		xil_printf("Mount failed\r\n"); 
+		return -1; 
+	}
 
 	ScuGicInterruptController irpt_ctl(IRPT_CTL_DEVID);
 	PS_GPIO<ScuGicInterruptController> gpio(GPIO_DEVID, irpt_ctl, GPIO_IRPT_ID);
@@ -405,21 +430,18 @@ int main()
 
 	VideoOutput vid(XPAR_VTC_0_DEVICE_ID, XPAR_VIDEO_DYNCLK_DEVICE_ID);
 
-	uint8_t r3035, r3036, r3037, r3034, r3108;
-	cam.readReg(0x3035, r3035);
-	cam.readReg(0x3036, r3036);
-	cam.readReg(0x3037, r3037);
-	cam.readReg(0x3034, r3034);
-	cam.readReg(0x3108, r3108);
-	xil_printf("Cold boot PLL: 3034=0x%02X 3035=0x%02X 3036=0x%02X 3037=0x%02X 3108=0x%02X\r\n",
-	           r3034, r3035, r3036, r3037, r3108);
 
 	pipeline_mode_change(vdma, cam, vid,
 		Resolution::R640_480_60_NN,
 		OV5640_cfg::MODE_480P_640_480_15FPS);
 
+	FIL fil;
+	res = f_open(&fil, "video.raw", FA_CREATE_ALWAYS | FA_WRITE);
+	if (res != FR_OK) { 
+		xil_printf("Open failed\r\n"); 
+		return -1; 
+	}
 
-	uint32_t counter = 0;
 
 	while (1)
 	{
@@ -435,17 +457,12 @@ int main()
 			cmd_reg_write(cam);
 		else if (!strcmp(cmd, "rr"))
 			cmd_reg_read(cam);
+		else if (!strcmp(cmd, "c")) 
+			cmd_capture(vdma, fil);
 		else if (!strcmp(cmd, "q"))
 			break;
 		else
 			xil_printf("Unknown command\r\n");
-
-		counter++;
-        if (counter % 3 == 0) {
-            xil_printf("\r\n=== Periodic Status (count %u) ===\r\n", counter/10);
-            print_mipi_status();
-            print_vdma_s2mm_status();
-        }
 	}
 
 	cleanup_platform();

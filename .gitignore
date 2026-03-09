@@ -1,4 +1,5 @@
 /workspace
 /.Xil
 
+.DS_Store
 .analytics

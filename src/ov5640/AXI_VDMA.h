@@ -56,6 +56,23 @@ public:
 		pfn->operator()(mask_or_type);
 	}
 
+	u32 getWriteFrameSize() const { 
+		return context_.WriteCfg.VertSizeInput * context_.WriteCfg.Stride; 
+	}
+
+	u32 getWriteBufferAddr(u32 index) const { 
+		if (index >= drv_inst_.MaxNumFrames) return 0; 
+		return context_.WriteCfg.FrameStoreStartAddr[index]; 
+	}
+
+	u32 getNumBuffers() const { 
+		return drv_inst_.MaxNumFrames; 
+	}
+
+	u32 getCompletedFrameCntWrite() const { 
+		return XAxiVdma_ChannelGetCompletedFrmCnt(const_cast<XAxiVdma_Channel*>(&drv_inst_.WriteChannel)); 
+	}
+
 	AXI_VDMA(uint16_t dev_id, uint32_t frame_buf_base_addr, IrptCtl& irpt_ctl, uint16_t rd_irpt_id, uint16_t wr_irpt_id) :
 		rd_handler_(std::bind(&AXI_VDMA::readHandler, this, std::placeholders::_1)),
 		wr_handler_(std::bind(&AXI_VDMA::writeHandler, this, std::placeholders::_1)),
@@ -208,6 +225,10 @@ public:
 		{
 			throw std::runtime_error(__FILE__ ":" LINE_STRING);
 		}
+
+		// Set frame counter for write channel (interrupt every 1 frame)
+		XAxiVdma_SetFrameCounter(&drv_inst_, 0, 0, 1, 0);
+
 		//Clear errors in SR
 		XAxiVdma_ClearChannelErrors(&drv_inst_.WriteChannel, XAXIVDMA_SR_ERR_ALL_MASK);
 		//Unmask error interrupts
