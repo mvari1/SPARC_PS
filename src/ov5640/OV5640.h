@@ -38,7 +38,9 @@ namespace OV5640_cfg {
 	using config_word_t = struct { uint16_t addr; uint8_t data; } ;
 	using mode_t = enum { MODE_480P_640_480_15FPS = 0, MODE_720P_1280_720_15fps, MODE_720P_1280_720_60fps, MODE_1080P_1920_1080_15fps,
 		MODE_1080P_1920_1080_30fps, MODE_1080P_1920_1080_30fps_336M_MIPI,
-		MODE_1080P_1920_1080_30fps_336M_1LANE_MIPI, MODE_END } ;
+		MODE_1080P_1920_1080_30fps_336M_1LANE_MIPI,
+		MODE_480P_YUV422_60FPS,
+		MODE_END } ;
 	using config_modes_t = struct { mode_t mode; config_word_t const* cfg; size_t cfg_size; };
 	using test_t = enum { TEST_DISABLED = 0, TEST_EIGHT_COLOR_BAR, TEST_END };
 	using awb_t = enum { AWB_DISABLED = 0, AWB_SIMPLE, AWB_ADVANCED, AWB_END };
@@ -820,6 +822,65 @@ config_word_t const cfg_1080p_30fps_336M_1lane_mipi_[] =
 		//[7]=0 Special digital effects, [5]=0 scaling, [2]=0 UV average disabled, [1]=1 Color matrix enabled, [0]=1 Auto white balance enabled
 		{0x5001, 0x03}
 	};
+	// -------------------------------------------------------------------
+	// 640x480 @ 60fps, YUV422 8-bit MIPI (CSI-2 data type 0x1E)
+	//
+	// Same PLL as RAW10 15fps (SCLK=56 MHz), 8-bit MIPI mode (0x3034=0x18).
+	// VTS reduced to target 60fps: VTS = 56e6 / (1600 * 60) ≈ 583.
+	// If the sensor pipeline requires more blanking (see VTS comment above),
+	// increase VTS or raise SCLK.  Use the 'wr' CLI command to tune at runtime:
+	//   0x380e / 0x380f  = VTS high/low bytes
+	//   0x4837           = MIPI global timing (try 36 for PCLK=56MHz)
+	//
+	// MIPI subsystem in BD must be configured for YUV422 8-bit (data type 0x1E).
+	// If it was built for RAW10 you will need to re-export and re-build hardware.
+	// -------------------------------------------------------------------
+	config_word_t const cfg_480p_yuv422_60fps_[] = {
+		// PLL — same as RAW10 15fps: SCLK=56 MHz
+		{0x3035, 0x21},  // sys div /2, MIPI scale /1
+		{0x3036, 0x46},  // PLL multiplier 70
+		{0x3037, 0x05},  // pre-div /1.5, root div /1
+		{0x3108, 0x11},  // PCLK /2, SCLK /2
+		{0x3034, 0x18},  // 8-bit MIPI mode (not 10-bit 0x1A)
+
+		// Same window/crop/output as RAW10 480p
+		{0x3800, (OV5640_PIXEL_ARRAY_LEFT >> 8) & 0x0F},
+		{0x3801,  OV5640_PIXEL_ARRAY_LEFT & 0xFF},
+		{0x3802, (OV5640_PIXEL_ARRAY_TOP  >> 8) & 0x07},
+		{0x3803,  OV5640_PIXEL_ARRAY_TOP  & 0xFF},
+		{0x3804, ((OV5640_PIXEL_ARRAY_LEFT + OV5640_PIXEL_ARRAY_WIDTH  - 1) >> 8) & 0x0F},
+		{0x3805,  (OV5640_PIXEL_ARRAY_LEFT + OV5640_PIXEL_ARRAY_WIDTH  - 1) & 0xFF},
+		{0x3806, ((OV5640_PIXEL_ARRAY_TOP  + OV5640_PIXEL_ARRAY_HEIGHT - 1) >> 8) & 0x07},
+		{0x3807,  (OV5640_PIXEL_ARRAY_TOP  + OV5640_PIXEL_ARRAY_HEIGHT - 1) & 0xFF},
+
+		{0x3810, 0x00}, {0x3811, 0x02},  // H offset
+		{0x3812, 0x00}, {0x3813, 0x04},  // V offset
+		{0x3808, (640 >> 8) & 0x0F}, {0x3809, 640 & 0xFF},
+		{0x380a, (480 >> 8) & 0x7F}, {0x380b, 480 & 0xFF},
+
+		// HTS=1600, VTS=583 → 56e6/(1600*583) ≈ 60fps
+		// If sensor binning pipeline needs more blanking, increase VTS.
+		{0x380c, (1600 >> 8) & 0x1F}, {0x380d, 1600 & 0xFF},
+		{0x380e, (583  >> 8) & 0xFF},  {0x380f, 583  & 0xFF},
+
+		{0x3814, 0x31},  // horizontal 2x subsample (binning)
+		{0x3815, 0x31},  // vertical   2x subsample
+		{0x3821, 0x01},  // mirror/binning
+
+		{0x4837, 36},    // MIPI global timing: 2*(1/56MHz)*1e9 ≈ 36 ns
+
+		// Anti-green
+		{0x3618, 0x00},
+		{0x3612, 0x59},
+		{0x3708, 0x64},
+		{0x3709, 0x52},
+		{0x370c, 0x03},
+
+		// YUV422 output: 0x4300=0x30 (YUYV), 0x501f=0x00 (YUV422 from ISP)
+		{0x4300, 0x30},
+		{0x501f, 0x00},
+	};
+
 	config_modes_t const modes[] =
 	{
 			{ MAP_ENUM_TO_CFG(MODE_480P_640_480_15FPS, cfg_480p_15fps_) },
@@ -829,6 +890,7 @@ config_word_t const cfg_1080p_30fps_336M_1lane_mipi_[] =
 			{ MAP_ENUM_TO_CFG(MODE_1080P_1920_1080_30fps, cfg_1080p_30fps_), },
 			{ MAP_ENUM_TO_CFG(MODE_1080P_1920_1080_30fps_336M_MIPI, cfg_1080p_30fps_336M_mipi_) },
 			{ MAP_ENUM_TO_CFG(MODE_1080P_1920_1080_30fps_336M_1LANE_MIPI, cfg_1080p_30fps_336M_1lane_mipi_) },
+			{ MAP_ENUM_TO_CFG(MODE_480P_YUV422_60FPS, cfg_480p_yuv422_60fps_) },
 	};
 	config_awb_t const awbs[] =
 	{
